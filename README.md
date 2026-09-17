@@ -61,8 +61,9 @@ top of SDL2. Everything is drawn into a 640x480 software framebuffer that is upl
 the window once per frame, rather than straight to the GPU, because the game uses
 `getimage` to read its own sprites back out of video memory. The layer also emulates the
 pieces of DOS the game depends on: EGA palette remapping through `setpalette`, a built-in
-5x7 bitmap font standing in for the BGI stroked fonts, and keyboard input where extended
-keys arrive as a `0` byte followed by a scan code.
+5x7 bitmap font standing in for the BGI stroked fonts, keyboard input where extended keys
+arrive as a `0` byte followed by a scan code, and PC speaker tones rendered as square
+waves. If no audio device is available the game runs silently rather than failing.
 
 ## Automated screenshots
 

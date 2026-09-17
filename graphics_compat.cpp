@@ -644,6 +644,21 @@ static void DrawLine(int x1, int y1, int x2, int y2, uint32_t color,
   fb_dirty = true;
 }
 
+/*------------------------------- sound --------------------------------*/
+
+/* The game drives the PC speaker directly: sound() starts a tone, a short
+   delay() holds it, nosound() stops it.  Those tones are about a
+   millisecond long, far too short for an audio device to render, so each
+   one is queued as a square wave with an audible floor on its length. */
+
+static const int AUDIO_RATE = 44100;
+static const int MIN_TONE_MS = 12;
+static const int MAX_TONE_MS = 250;
+
+static SDL_AudioDeviceID audio_dev = 0;
+static int tone_freq = 0;
+static Uint32 tone_started = 0;
+
 /*----------------------------- presenting -----------------------------*/
 
 static void Present() {
@@ -657,6 +672,10 @@ static void Present() {
 }
 
 static void ShutdownGraphics() {
+  if (audio_dev) {
+    SDL_CloseAudioDevice(audio_dev);
+    audio_dev = 0;
+  }
   if (screen_tex) {
     SDL_DestroyTexture(screen_tex);
     screen_tex = nullptr;
@@ -672,6 +691,53 @@ static void ShutdownGraphics() {
   free(fb);
   fb = nullptr;
   SDL_Quit();
+}
+
+/*------------------------------ tone output ---------------------------*/
+
+static void OpenAudio() {
+  SDL_AudioSpec want;
+  SDL_zero(want);
+  want.freq = AUDIO_RATE;
+  want.format = AUDIO_S16SYS;
+  want.channels = 1;
+  want.samples = 512;
+  want.callback = nullptr; // tones are pushed with SDL_QueueAudio()
+  audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, nullptr, 0);
+  if (audio_dev)
+    SDL_PauseAudioDevice(audio_dev, 0);
+}
+
+static void QueueTone(int freq, int ms) {
+  if (!audio_dev || freq <= 0)
+    return;
+  if (ms < MIN_TONE_MS)
+    ms = MIN_TONE_MS;
+  if (ms > MAX_TONE_MS)
+    ms = MAX_TONE_MS;
+
+  // Drop the tone rather than let a backlog drift behind the game.
+  if (SDL_GetQueuedAudioSize(audio_dev) > AUDIO_RATE / 5 * sizeof(Sint16))
+    return;
+
+  static Sint16 buffer[AUDIO_RATE / 1000 * MAX_TONE_MS];
+  int total = AUDIO_RATE / 1000 * ms;
+  int period = AUDIO_RATE / freq;
+  if (period < 2)
+    period = 2;
+  int ramp = AUDIO_RATE / 500; // ~2ms fade in/out, so tones don't click
+  if (ramp > total / 2)
+    ramp = total / 2;
+
+  for (int i = 0; i < total; i++) {
+    int level = (i % period) < period / 2 ? 5200 : -5200;
+    if (ramp > 0) {
+      int fade = i < ramp ? i : (i >= total - ramp ? total - 1 - i : ramp);
+      level = level * fade / ramp;
+    }
+    buffer[i] = (Sint16)level;
+  }
+  SDL_QueueAudio(audio_dev, buffer, (Uint32)total * sizeof(Sint16));
 }
 
 /*------------------------------- input --------------------------------*/
@@ -842,6 +908,11 @@ void initgraph(int *graphdriver, int *graphmode, const char *pathtodriver) {
     printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
     exit(1);
   }
+
+  // Sound is optional: if the audio device will not open, the game stays
+  // playable and simply runs silent.
+  if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0)
+    OpenAudio();
 
   window = SDL_CreateWindow("Aguntuk Bricks", SDL_WINDOWPOS_CENTERED,
                             SDL_WINDOWPOS_CENTERED, SCREEN_W, SCREEN_H,
@@ -1113,6 +1184,18 @@ void delay(int ms) {
     SDL_Delay((Uint32)ms);
 }
 
-void sound(int frequency) { (void)frequency; }
-void nosound() {}
+void sound(int frequency) {
+  nosound(); // flush any tone still being held
+  if (frequency <= 0)
+    return;
+  tone_freq = frequency;
+  tone_started = SDL_GetTicks();
+}
+
+void nosound() {
+  if (!tone_freq)
+    return;
+  QueueTone(tone_freq, (int)(SDL_GetTicks() - tone_started));
+  tone_freq = 0;
+}
 void randomize() { srand((unsigned)time(NULL)); }
