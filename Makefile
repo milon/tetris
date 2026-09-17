@@ -6,6 +6,8 @@ TARGET = tetris
 SRCS = tetris.cpp graphics_compat.cpp
 OBJS = $(SRCS:.cpp=.o)
 
+.PHONY: all run clean
+
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
@@ -13,6 +15,9 @@ $(TARGET): $(OBJS)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+run: $(TARGET)
+	./$(TARGET)
 
 clean:
 	rm -f $(OBJS) $(TARGET)

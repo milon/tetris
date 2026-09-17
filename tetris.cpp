@@ -7,6 +7,7 @@
 /* Header files */
 
 #include "graphics_compat.h"
+#include <string.h>
 // #include <graphics.h>
 // #include <conio.h>
 // #include <stdio.h>
@@ -97,7 +98,7 @@ void SoundDrop();         // For sound
 void StartScreen();       // For the start screen
 int IncreaseSpeed();      // Increase the speed
 int ShowGameOver();       // Show game over box
-char MessageBox(char *Message, int Width = 240,
+char MessageBox(const char *Message, int Width = 240,
                 int Size = 3); // For drawing message box
 
 /* Bitmaps */
@@ -436,11 +437,11 @@ void DisplayScreen() {
   PrintLinesCleared();           // Display lines cleared
   setcolor(REDBR);
   settextstyle(10, 1, 4);
-  outtextxy(0, 30, "Aguntuk"); // for name
-  outtextxy(60, 60, "Bricks");
+  outtextxy(18, 30, "Aguntuk"); // for name
+  outtextxy(76, 60, "Bricks");
   setcolor(GREEN);
   settextstyle(8, 0, 2);
-  outtextxy(20, 255, "KEYS:");
+  outtextxy(20, 263, "KEYS:");
   settextstyle(0, 0, 1);
   setcolor(PURPLE);
   outtextxy(20, 290, "Left");
@@ -643,10 +644,10 @@ void DisplayBlock(int x, int y) {
           ScreenBackgroundLayout[j][i]; // assign background to ScreenLayout
 
   for (i = 0; i < 4; i++) {
-    if ((x + i) < 0 || (x + i) > COLS)
+    if ((x + i) < 0 || (x + i) >= COLS)
       continue;
     for (j = 0; j < 4; j++) {
-      if ((y + j) > ROWS)
+      if ((y + j) < 0 || (y + j) >= ROWS)
         continue;
       if (BlockMatrix[i][j] == 0)
         continue;
@@ -677,28 +678,19 @@ int DetectCollision(int Direction) {
     break;
   }
 
-  /* Left Boundry check */
-  if (Bx < 0) {
-    for (x = 0; (x + Bx) < 0; x++) // start checking from left side
-      for (y = 0; y < 4; y++)
-        if (BlockMatrix[x][y] != 0)
-          return 1;
-  }
-
-  /* Right Boundry check */
-  if (Bx > COLS - 4) {
-    for (x = Bx + 3; x >= COLS; x--) // start checking from right side
-      for (y = 0; y < 4; y++)
-        if (BlockMatrix[x - Bx][y] != 0)
-          return 1;
-  }
-  /* Bottom boundry check */
+  /* Walls, floor and resting bricks */
   for (x = 0; x < 4; x++)
     for (y = 3; y >= 0; y--) // start checking from bottom side
     {
-      if ((ScreenBackgroundLayout[Bx + x][By + y] != BLANK &&
-           BlockMatrix[x][y] != BLANK) ||
-          ((By + y) >= ROWS && BlockMatrix[x][y] != BLANK))
+      if (BlockMatrix[x][y] == BLANK)
+        continue;
+      int Cx = Bx + x;
+      int Cy = By + y;
+      if (Cx < 0 || Cx >= COLS || Cy >= ROWS) // outside the play field
+        return 1;
+      if (Cy < 0) // still above the field, nothing to hit
+        continue;
+      if (ScreenBackgroundLayout[Cx][Cy] != BLANK)
         return 1;
     }
 
@@ -709,10 +701,15 @@ int DetectCollision(int Direction) {
 
 void GetNextBlock() {
   for (int x = 0; x < 4; x++)
-    for (int y = 0; y < 4; y++)
-      if (BlockMatrix[x][y] != BLANK)
-        ScreenBackgroundLayout[BlockX + x][BlockY + y] =
-            BlockMatrix[x][y];       // stop the block moving down
+    for (int y = 0; y < 4; y++) {
+      if (BlockMatrix[x][y] == BLANK)
+        continue;
+      int Cx = BlockX + x;
+      int Cy = BlockY + y;
+      if (Cx < 0 || Cx >= COLS || Cy < 0 || Cy >= ROWS)
+        continue;
+      ScreenBackgroundLayout[Cx][Cy] = BlockMatrix[x][y]; // stop the block
+    }
   CheckForLine();                    // checking if lines are filled
   AssignShape(NextShape, NextColor); // assign new block
   NextShape = GetRandomShape();      // assign next shape
@@ -937,7 +934,7 @@ void PrintScore() {
   settextstyle(7, 0, 1);
   sprintf(PScore, "%11lu", Score);
   putimage(501, 51, bmpScore, 0);
-  outtextxy(499, 48, PScore);
+  outtextxy(520, 56, PScore);
 }
 
 /*For printing level*/
@@ -946,7 +943,7 @@ void PrintLevel() {
   settextstyle(7, 0, 1);
   sprintf(PLevel, "%11d", Level);
   putimage(501, 111, bmpLevel, 0);
-  outtextxy(499, 108, PLevel);
+  outtextxy(520, 116, PLevel);
 }
 
 /*For printing speed*/
@@ -955,7 +952,7 @@ void PrintSpeed() {
   settextstyle(7, 0, 1);
   sprintf(PSpeed, "%11d", 100 - Speed);
   putimage(501, 171, bmpSpeed, 0);
-  outtextxy(499, 168, PSpeed);
+  outtextxy(520, 176, PSpeed);
 }
 
 /*For printing line cleared*/
@@ -964,7 +961,7 @@ void PrintLinesCleared() {
   settextstyle(7, 0, 1);
   sprintf(PLinesCleared, "%11d", LinesCleared);
   putimage(501, 231, bmpLinesCleared, 0);
-  outtextxy(499, 228, PLinesCleared);
+  outtextxy(520, 236, PLinesCleared);
 }
 
 /*For showing game over box*/
@@ -976,11 +973,11 @@ int ShowGameOver() {
 
 /*For printing a message within box*/
 
-char MessageBox(char *Message, int Width,
+char MessageBox(const char *Message, int Width,
                 int Size) // Width defaults to 240 & size defaults to 3
 {
   int Color = 0;
-  int TextX = 320 - (Width / 2) + 25;
+  int TextX = 320 - (int)(strlen(Message) * 6 * Size) / 2; // centre the text
   setfillstyle(10, YELLOWDR);
   bar(320 - (Width / 2) + 6, 206, 320 + (Width / 2) - 6, 274);
   DrawBox(320 - (Width / 2), 200, 320 + (Width / 2), 280, YELLOWBR, YELLOW,
@@ -1086,8 +1083,8 @@ void StartScreen() {
       putimage(i * 21, j * 21, bmpRedBrick, 0); // For print S
     }
   setcolor(PURPLEBR);
-  settextstyle(4, 0, 5);
-  outtextxy(78, 320, "Created by Aguntuk Group");
+  settextstyle(4, 0, 3);
+  outtextxy(104, 325, "Created by Aguntuk Group");
   setcolor(GREENBR);
   settextstyle(10, 0, 2);
   Color = 0;
@@ -1107,8 +1104,8 @@ void StartScreen() {
       setcolor(GREEN);
       break;
     }
-    outtextxy(75, 380, "Mawlana Bhashani Science and");
-    outtextxy(138, 420, "Technology University");
+    outtextxy(152, 385, "Mawlana Bhashani Science and");
+    outtextxy(194, 425, "Technology University");
     delay(80);
     if (Color == 4)
       Color = 0;
